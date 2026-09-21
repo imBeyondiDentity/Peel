@@ -146,8 +146,8 @@ def process(ff, src, dst, a):
     if a.fade:
         if length:
             fd = min(a.fade, length / 2)
-            chain += [f"afade=t=in:st=0:d={fd:.3f}",
-                      f"afade=t=out:st={length - fd:.3f}:d={fd:.3f}"]
+            chain += [f"afade=t=in:st=0:d={fd:.3f}:curve=cub",
+                      f"afade=t=out:st={length - fd:.3f}:d={fd:.3f}:curve=cub"]
         else:
             notes.append("length unknown, fades skipped")
 

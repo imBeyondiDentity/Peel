@@ -162,9 +162,9 @@ button:focus-visible,.drop:focus-within,a:focus-visible{outline:2px solid var(--
       <label data-i18n="fades"></label>
       <div class="seg" data-key="fade">
         <button data-v="0" aria-pressed="true" data-i18n="none"></button>
-        <button data-v="0.5" aria-pressed="false" data-i18n="s05"></button>
         <button data-v="1" aria-pressed="false" data-i18n="s1"></button>
         <button data-v="3" aria-pressed="false" data-i18n="s3"></button>
+        <button data-v="5" aria-pressed="false" data-i18n="s5"></button>
       </div>
     </div>
 
@@ -203,7 +203,7 @@ const T = {
     lameErr: "MP3-кодер не загрузился (нет интернета?). Выбери WAV или обнови страницу.",
     ch: n => n === 1 ? "моно" : n + " кан.",
     full: "Весь трек", sec: "с", loud: "Громкость", off: "Выкл", peak: "Пик −1 dB",
-    fades: "Фейды", none: "Нет", s05: "0.5 с", s1: "1 с", s3: "3 с",
+    fades: "Фейды", none: "Нет", s1: "1 с", s3: "3 с", s5: "5 с",
     processing: "Обрабатываю…",
     limited: v => "Готово · пик не дал поднять громкость выше, вышло " + v + " LUFS",
     privacy: "Файлы обрабатываются локально и не покидают устройство. ",
@@ -225,7 +225,7 @@ const T = {
     lameErr: "The MP3 encoder didn't load (offline?). Choose WAV or reload the page.",
     ch: n => n === 1 ? "mono" : n + " ch",
     full: "Full track", sec: "s", loud: "Loudness", off: "Off", peak: "Peak −1 dB",
-    fades: "Fades", none: "None", s05: "0.5 s", s1: "1 s", s3: "3 s",
+    fades: "Fades", none: "None", s1: "1 s", s3: "3 s", s5: "5 s",
     processing: "Processing…",
     limited: v => "Done · the peak limit capped loudness at " + v + " LUFS",
     privacy: "Files are processed locally and never leave your device. ",
@@ -256,6 +256,7 @@ document.querySelectorAll(".seg").forEach(seg => {
     state[k] = k === "format" || k === "norm" ? v : k === "mono" ? v === "1" : Number(v);
     $("#rowKbps").classList.toggle("hide", state.format !== "mp3");
     $("#rowBits").classList.toggle("hide", state.format !== "wav");
+    if (k === "fade") drawWave();
   });
 });
 
@@ -328,9 +329,14 @@ function drawWave() {
   const css = getComputedStyle(document.documentElement);
   const on = css.getPropertyValue("--accent"), off = css.getPropertyValue("--line"), txt = css.getPropertyValue("--text");
   const xs = state.sel.s / buf.duration * W, xe = state.sel.e / buf.duration * W;
+  const fd = Math.min(state.fade, (state.sel.e - state.sel.s) / 2);
   state.peaks.forEach((p, i) => {
-    const x = i * (barW + gap), h = Math.max(dpr, p * H * 0.86);
-    g.fillStyle = (x + barW / 2 >= xs && x + barW / 2 <= xe) ? on : off;
+    const x = i * (barW + gap), tc = (x + barW / 2) / W * buf.duration;
+    const inSel = x + barW / 2 >= xs && x + barW / 2 <= xe;
+    let k = 1;
+    if (inSel && fd > 0) k = Math.pow(Math.min(1, (tc - state.sel.s) / fd, (state.sel.e - tc) / fd), 3);
+    const h = Math.max(dpr, p * k * H * 0.86);
+    g.fillStyle = inSel ? on : off;
     g.fillRect(x, (H - h) / 2, barW, h);
   });
   g.fillStyle = txt;
@@ -414,7 +420,7 @@ function normalize(chs, r, mode) {
 function applyFades(chs, r, sec) {
   const n = chs[0].length, f = Math.min(Math.floor(sec * r), Math.floor(n / 2));
   for (const c of chs) for (let i = 0; i < f; i++) {
-    const g = 0.5 - 0.5 * Math.cos(Math.PI * i / f); c[i] *= g; c[n - 1 - i] *= g;
+    const g = Math.pow(i / f, 3); c[i] *= g; c[n - 1 - i] *= g;
   }
 }
 function render(buf) {
