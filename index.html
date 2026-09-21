@@ -42,7 +42,9 @@ h1{font-family:var(--serif);font-weight:400;font-size:clamp(64px,14vw,112px);lin
 .file .name{font-family:var(--serif);font-size:26px;word-break:break-all}
 .meta{color:var(--muted);font-size:12px}
 .change{background:none;border:0;color:var(--accent);font:inherit;font-size:12px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:3px}
-canvas{display:block;width:100%;height:96px;margin:18px 0 26px;border-bottom:1px solid var(--line)}
+canvas{display:block;width:100%;height:110px;margin:18px 0 8px;border-bottom:1px solid var(--line);touch-action:none;cursor:ew-resize}
+.trim{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:26px;font-size:12px;color:var(--muted)}
+.trim b{color:var(--text);font-weight:400}
 
 .row{display:grid;grid-template-columns:130px 1fr;gap:10px 16px;align-items:center;margin-bottom:14px}
 .row > label{color:var(--muted);font-size:12px}
@@ -103,7 +105,11 @@ button:focus-visible,.drop:focus-within,a:focus-visible{outline:2px solid var(--
       </div>
       <button class="change" id="change" data-i18n="change"></button>
     </div>
-    <canvas id="wave" aria-hidden="true"></canvas>
+    <canvas id="wave" aria-label="Waveform"></canvas>
+    <div class="trim">
+      <span><b id="tsel"></b> <span id="tdur"></span></span>
+      <button class="change" id="treset" data-i18n="full"></button>
+    </div>
 
     <div class="row">
       <label data-i18n="format"></label>
@@ -143,6 +149,25 @@ button:focus-visible,.drop:focus-within,a:focus-visible{outline:2px solid var(--
       </div>
     </div>
 
+    <div class="row">
+      <label data-i18n="loud"></label>
+      <div class="seg" data-key="norm">
+        <button data-v="off" aria-pressed="true" data-i18n="off"></button>
+        <button data-v="peak" aria-pressed="false" data-i18n="peak"></button>
+        <button data-v="-14" aria-pressed="false">−14 LUFS</button>
+        <button data-v="-16" aria-pressed="false">−16 LUFS</button>
+      </div>
+    </div>
+    <div class="row">
+      <label data-i18n="fades"></label>
+      <div class="seg" data-key="fade">
+        <button data-v="0" aria-pressed="true" data-i18n="none"></button>
+        <button data-v="0.5" aria-pressed="false" data-i18n="s05"></button>
+        <button data-v="1" aria-pressed="false" data-i18n="s1"></button>
+        <button data-v="3" aria-pressed="false" data-i18n="s3"></button>
+      </div>
+    </div>
+
     <button class="go" id="go" data-i18n="extract"></button>
     <div class="bar"><i id="prog"></i></div>
     <div class="status" id="status" role="status"></div>
@@ -177,6 +202,10 @@ const T = {
     decodeErr: "Браузер не смог прочитать звук из этого файла. Возможно, в нём нет аудио или кодек не поддерживается. Python-версия читает любые форматы через ffmpeg.",
     lameErr: "MP3-кодер не загрузился (нет интернета?). Выбери WAV или обнови страницу.",
     ch: n => n === 1 ? "моно" : n + " кан.",
+    full: "Весь трек", sec: "с", loud: "Громкость", off: "Выкл", peak: "Пик −1 dB",
+    fades: "Фейды", none: "Нет", s05: "0.5 с", s1: "1 с", s3: "3 с",
+    processing: "Обрабатываю…",
+    limited: v => "Готово · пик не дал поднять громкость выше, вышло " + v + " LUFS",
     privacy: "Файлы обрабатываются локально и не покидают устройство. ",
     cli: "Для пакетной обработки есть CLI: peel.py в репозитории."
   },
@@ -195,6 +224,10 @@ const T = {
     decodeErr: "The browser couldn't read audio from this file. It may have no audio track, or the codec isn't supported. The Python version reads any format via ffmpeg.",
     lameErr: "The MP3 encoder didn't load (offline?). Choose WAV or reload the page.",
     ch: n => n === 1 ? "mono" : n + " ch",
+    full: "Full track", sec: "s", loud: "Loudness", off: "Off", peak: "Peak −1 dB",
+    fades: "Fades", none: "None", s05: "0.5 s", s1: "1 s", s3: "3 s",
+    processing: "Processing…",
+    limited: v => "Done · the peak limit capped loudness at " + v + " LUFS",
     privacy: "Files are processed locally and never leave your device. ",
     cli: "For batch jobs there's a CLI: peel.py in the repo."
   }
@@ -203,14 +236,14 @@ let lang = (navigator.language || "ru").startsWith("ru") ? "ru" : "en";
 const t = k => T[lang][k];
 
 const $ = s => document.querySelector(s);
-const state = { file: null, buffer: null, format: "mp3", kbps: 320, bits: 16, rate: 44100, mono: false, url: null };
+const state = { file: null, buffer: null, format: "mp3", kbps: 320, bits: 16, rate: 44100, mono: false, norm: "off", fade: 0, sel: { s: 0, e: 0 }, peaks: null, drag: null, url: null };
 const tick = () => new Promise(r => setTimeout(r, 0));
 
 function applyLang() {
   document.documentElement.lang = lang;
   document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
   document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang));
-  if (state.buffer) showMeta();
+  if (state.buffer) { showMeta(); showSel(); }
 }
 document.querySelectorAll(".lang button").forEach(b => b.onclick = () => { lang = b.dataset.lang; applyLang(); });
 
@@ -220,7 +253,7 @@ document.querySelectorAll(".seg").forEach(seg => {
     const b = e.target.closest("button"); if (!b) return;
     seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
     const k = seg.dataset.key, v = b.dataset.v;
-    state[k] = k === "format" ? v : k === "mono" ? v === "1" : Number(v);
+    state[k] = k === "format" || k === "norm" ? v : k === "mono" ? v === "1" : Number(v);
     $("#rowKbps").classList.toggle("hide", state.format !== "mp3");
     $("#rowBits").classList.toggle("hide", state.format !== "wav");
   });
@@ -259,35 +292,138 @@ async function load(file) {
   setStatus(file.size > 1024 * 1048576 ? t("big") : t("reading"));
   try {
     state.buffer = await decode(file, state.rate);
-    showMeta(); drawWave(state.buffer);
+    state.sel = { s: 0, e: state.buffer.duration }; state.peaks = null;
+    showMeta(); drawWave(); showSel();
     if (file.size <= 1024 * 1048576) setStatus("");
   } catch (e) {
     console.error(e); setStatus(t("decodeErr"), true);
   }
 }
 
-function clearWave() { const c = $("#wave"); c.getContext("2d").clearRect(0, 0, c.width, c.height); }
-function drawWave(buf) {
+function clearWave() { const c = $("#wave"); c.getContext("2d").clearRect(0, 0, c.width, c.height); $("#tsel").textContent = ""; $("#tdur").textContent = ""; }
+
+function fmtT(x) { const m = Math.floor(x / 60), r = x - m * 60; return m + ":" + r.toFixed(1).padStart(4, "0"); }
+function showSel() {
+  const { s, e } = state.sel;
+  $("#tsel").textContent = fmtT(s) + " — " + fmtT(e);
+  $("#tdur").textContent = "· " + (e - s).toFixed(1) + " " + t("sec");
+}
+
+function drawWave() {
+  const buf = state.buffer; if (!buf) return;
   const c = $("#wave"), dpr = window.devicePixelRatio || 1;
-  c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
-  const g = c.getContext("2d"), W = c.width, H = c.height;
-  const d = buf.getChannelData(0), d2 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
+  const W = c.width = c.clientWidth * dpr, H = c.height = c.clientHeight * dpr;
+  const g = c.getContext("2d");
   const barW = 3 * dpr, gap = 2 * dpr, bars = Math.floor(W / (barW + gap));
-  const step = Math.floor(d.length / bars) || 1;
-  const peaks = [];
-  let max = 0;
-  for (let i = 0; i < bars; i++) {
-    let p = 0; const s = i * step, e = Math.min(s + step, d.length);
-    for (let j = s; j < e; j += 16) { const v = Math.abs(d2 ? (d[j] + d2[j]) / 2 : d[j]); if (v > p) p = v; }
-    peaks.push(p); if (p > max) max = p;
+  if (!state.peaks || state.peaks.length !== bars) {
+    const d = buf.getChannelData(0), d2 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : null;
+    const step = Math.floor(d.length / bars) || 1, peaks = []; let max = 0;
+    for (let i = 0; i < bars; i++) {
+      let p = 0; const s = i * step, e = Math.min(s + step, d.length);
+      for (let j = s; j < e; j += 16) { const v = Math.abs(d2 ? (d[j] + d2[j]) / 2 : d[j]); if (v > p) p = v; }
+      peaks.push(p); if (p > max) max = p;
+    }
+    state.peaks = peaks.map(p => p / (max || 1));
   }
-  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--accent");
-  peaks.forEach((p, i) => {
-    const h = Math.max(dpr, (p / (max || 1)) * H * 0.92);
-    g.fillRect(i * (barW + gap), (H - h) / 2, barW, h);
+  const css = getComputedStyle(document.documentElement);
+  const on = css.getPropertyValue("--accent"), off = css.getPropertyValue("--line"), txt = css.getPropertyValue("--text");
+  const xs = state.sel.s / buf.duration * W, xe = state.sel.e / buf.duration * W;
+  state.peaks.forEach((p, i) => {
+    const x = i * (barW + gap), h = Math.max(dpr, p * H * 0.86);
+    g.fillStyle = (x + barW / 2 >= xs && x + barW / 2 <= xe) ? on : off;
+    g.fillRect(x, (H - h) / 2, barW, h);
+  });
+  g.fillStyle = txt;
+  [xs, xe].forEach((x, k) => {
+    const hx = Math.min(Math.max(x, dpr), W - dpr);
+    g.fillRect(hx - dpr, 0, 2 * dpr, H);
+    const gw = 8 * dpr, gh = 22 * dpr, gx = k ? hx - gw : hx;
+    g.beginPath(); g.roundRect ? g.roundRect(gx, (H - gh) / 2, gw, gh, 3 * dpr) : g.rect(gx, (H - gh) / 2, gw, gh); g.fill();
   });
 }
-window.addEventListener("resize", () => { if (state.buffer) drawWave(state.buffer); });
+window.addEventListener("resize", drawWave);
+
+// trim handles
+const wave = $("#wave");
+function timeAt(e) {
+  const r = wave.getBoundingClientRect();
+  return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * state.buffer.duration;
+}
+function moveHandle(e) {
+  const x = timeAt(e), min = 0.1;
+  if (state.drag === "s") state.sel.s = Math.min(x, state.sel.e - min);
+  else state.sel.e = Math.max(x, state.sel.s + min);
+  state.sel.s = Math.max(0, state.sel.s); state.sel.e = Math.min(state.buffer.duration, state.sel.e);
+  drawWave(); showSel();
+}
+wave.addEventListener("pointerdown", e => {
+  if (!state.buffer) return;
+  const x = timeAt(e);
+  state.drag = Math.abs(x - state.sel.s) <= Math.abs(x - state.sel.e) ? "s" : "e";
+  wave.setPointerCapture(e.pointerId); moveHandle(e);
+});
+wave.addEventListener("pointermove", e => { if (state.drag) moveHandle(e); });
+["pointerup", "pointercancel"].forEach(ev => wave.addEventListener(ev, () => { state.drag = null; }));
+$("#treset").onclick = () => { if (!state.buffer) return; state.sel = { s: 0, e: state.buffer.duration }; drawWave(); showSel(); };
+
+// ---- DSP ----
+function biquad(x, b0, b1, b2, a0, a1, a2) {
+  b0 /= a0; b1 /= a0; b2 /= a0; a1 /= a0; a2 /= a0;
+  const y = new Float32Array(x.length); let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < x.length; i++) {
+    const xi = x[i], yi = b0 * xi + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = xi; y2 = y1; y1 = yi; y[i] = yi;
+  }
+  return y;
+}
+function kWeight(x, r) { // ITU-R BS.1770 K-weighting (libebur128 formulation)
+  const Vh = Math.pow(10, 3.999843853973347 / 20), Vb = Math.pow(Vh, 0.4996667741545416);
+  let Q = 0.7071752369554196, K = Math.tan(Math.PI * 1681.974450955533 / r), a0 = 1 + K / Q + K * K;
+  const y = biquad(x, (Vh + Vb * K / Q + K * K) / a0, 2 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0,
+    1, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0);
+  Q = 0.5003270373253953; K = Math.tan(Math.PI * 38.13547087613982 / r); a0 = 1 + K / Q + K * K;
+  return biquad(y, 1, -2, 1, 1, 2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0);
+}
+function lufs(chs, r) {
+  const hop = Math.round(0.1 * r), n = chs[0].length, segs = Math.floor(n / hop);
+  if (segs < 4) return -Infinity;
+  const seg = new Float64Array(segs);
+  for (const c of chs) {
+    const k = kWeight(c, r);
+    for (let j = 0; j < segs; j++) { let s = 0; for (let i = j * hop, e = i + hop; i < e; i++) s += k[i] * k[i]; seg[j] += s; }
+  }
+  const z = []; for (let j = 0; j + 4 <= segs; j++) z.push((seg[j] + seg[j + 1] + seg[j + 2] + seg[j + 3]) / (4 * hop));
+  const lk = v => -0.691 + 10 * Math.log10(v), mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  const g1 = z.filter(v => lk(v) > -70); if (!g1.length) return -Infinity;
+  const rel = lk(mean(g1)) - 10, g2 = g1.filter(v => lk(v) > rel);
+  return lk(mean(g2));
+}
+function normalize(chs, r, mode) {
+  let peak = 0; for (const c of chs) for (let i = 0; i < c.length; i++) { const v = Math.abs(c[i]); if (v > peak) peak = v; }
+  if (!peak) return "";
+  const ceil = Math.pow(10, -1 / 20); let g, note = "";
+  if (mode === "peak") g = ceil / peak;
+  else {
+    const L = lufs(chs, r); if (!isFinite(L)) return "";
+    g = Math.pow(10, (Number(mode) - L) / 20);
+    if (peak * g > ceil) { g = ceil / peak; note = t("limited")((L + 20 * Math.log10(g)).toFixed(1)); }
+  }
+  for (const c of chs) for (let i = 0; i < c.length; i++) c[i] *= g;
+  return note;
+}
+function applyFades(chs, r, sec) {
+  const n = chs[0].length, f = Math.min(Math.floor(sec * r), Math.floor(n / 2));
+  for (const c of chs) for (let i = 0; i < f; i++) {
+    const g = 0.5 - 0.5 * Math.cos(Math.PI * i / f); c[i] *= g; c[n - 1 - i] *= g;
+  }
+}
+function render(buf) {
+  const r = buf.sampleRate, s = Math.floor(state.sel.s * r), e = Math.min(buf.length, Math.ceil(state.sel.e * r));
+  const chs = channels(buf, state.mono).map(c => c.slice(s, e));
+  const note = state.norm !== "off" ? normalize(chs, r, state.norm) : "";
+  if (state.fade > 0) applyFades(chs, r, state.fade);
+  return { chs, note };
+}
 
 function channels(buf, mono) {
   if (buf.numberOfChannels === 1) return [buf.getChannelData(0)];
@@ -348,9 +484,10 @@ $("#go").onclick = async () => {
     if (state.format === "mp3" && typeof lamejs === "undefined") throw new Error("lame");
     if (!state.buffer || state.buffer.sampleRate !== state.rate) {
       setStatus(t("reading")); await tick();
-      state.buffer = await decode(state.file, state.rate); drawWave(state.buffer); showMeta();
+      state.buffer = await decode(state.file, state.rate); state.peaks = null; drawWave(); showMeta();
     }
-    const chs = channels(state.buffer, state.mono);
+    setStatus(t("processing")); await tick();
+    const { chs, note } = render(state.buffer);
     const prog = p => { setProg(p); setStatus(t("encoding") + " " + Math.round(p * 100) + "%"); };
     const blob = state.format === "mp3"
       ? await encodeMP3(chs, state.rate, state.kbps, prog)
@@ -358,13 +495,14 @@ $("#go").onclick = async () => {
     setProg(1);
     if (state.url) URL.revokeObjectURL(state.url);
     state.url = URL.createObjectURL(blob);
-    const base = state.file.name.replace(/\.[^.]+$/, "");
+    const full = state.sel.s < 0.05 && state.sel.e > state.buffer.duration - 0.05;
+    const base = state.file.name.replace(/\.[^.]+$/, "") + (full ? "" : "_cut");
     const a = $("#dl"); a.href = state.url; a.download = base + "." + state.format;
     $("#player").src = state.url;
     const spec = state.format === "mp3" ? state.kbps + " kbps" : state.bits + " bit";
-    $("#rmeta").textContent = state.format.toUpperCase() + "  ·  " + spec + "  ·  " + (state.rate / 1000) + " kHz  ·  " + fmtSize(blob.size);
+    $("#rmeta").textContent = state.format.toUpperCase() + "  ·  " + spec + "  ·  " + (state.rate / 1000) + " kHz  ·  " + fmtT(chs[0].length / state.rate) + "  ·  " + fmtSize(blob.size);
     $("#result").classList.add("on");
-    setStatus(t("done"));
+    setStatus(note || t("done"));
   } catch (e) {
     console.error(e);
     setStatus(e.message === "lame" ? t("lameErr") : t("decodeErr"), true);
