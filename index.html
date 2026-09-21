@@ -22,11 +22,11 @@
 *,*::before,*::after{box-sizing:inherit}
 html,body{margin:0;background:var(--bg);color:var(--text)}
 body{font-family:var(--mono);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
-main{max-width:720px;margin:0 auto;padding:48px 20px 64px}
-header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:36px}
+main{max-width:720px;margin:0 auto;padding:48px 20px 64px;position:relative}
+header{text-align:center;margin:0 auto 36px;max-width:46ch}
 h1{font-family:var(--serif);font-weight:400;font-size:clamp(64px,14vw,112px);line-height:.85;margin:0;letter-spacing:-.02em}
-.sub{color:var(--muted);margin:14px 0 0;max-width:46ch}
-.lang{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;flex-shrink:0}
+.sub{color:var(--muted);margin:14px auto 0}
+.lang{position:absolute;top:48px;right:20px;display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;flex-shrink:0}
 .lang button{background:none;border:0;color:var(--muted);font:inherit;font-size:12px;padding:6px 12px;cursor:pointer}
 .lang button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
 
@@ -71,9 +71,9 @@ footer{margin-top:56px;color:var(--muted);font-size:12px;border-top:1px solid va
 footer a{color:var(--text)}
 button:focus-visible,.drop:focus-within,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media (max-width:520px){
-  main{padding-top:28px}
+  main{padding-top:76px}
   .row{grid-template-columns:1fr;gap:6px}
-  header{flex-direction:column;align-items:flex-start}
+  .lang{top:20px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
