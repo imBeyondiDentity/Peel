@@ -7,6 +7,9 @@ Two versions: a browser app (GitHub Pages) and a Python CLI.
 
 ## Browser
 
+Open `index.html`, or enable **Settings → Pages → Deploy from branch → main / root**
+and use `https://<user>.github.io/<repo>/`.
+
 - Drag a video in, pick MP3 (128–320 kbps) or WAV (16/24 bit), 44.1/48 kHz, stereo/mono
 - Trim: drag the two handles on the waveform to keep only the part you need
 - Loudness: peak −1 dB, or −14 LUFS (streaming) / −16 LUFS (podcasts), measured per ITU-R BS.1770
