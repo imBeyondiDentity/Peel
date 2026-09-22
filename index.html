@@ -70,7 +70,10 @@ canvas{display:block;width:100%;height:110px;margin:18px 0 8px;border-bottom:1px
 
 footer{margin-top:56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:16px}
 footer a{color:var(--text)}
-.signature{margin-top:24px;text-align:center;color:var(--muted);font-size:12px}
+.repo-row{display:flex;justify-content:space-between;align-items:center;margin-top:24px;gap:12px}
+.repo-link{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-family:var(--mono);font-size:12px;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:8px 16px;transition:border-color .15s,color .15s}
+.repo-link:hover{border-color:var(--accent);color:var(--text)}
+.signature{margin-top:16px;text-align:center;color:var(--muted);font-size:12px}
 .signature i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);margin-right:8px;vertical-align:middle;font-style:normal}
 button:focus-visible,.drop:focus-within,a:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 @media (max-width:520px){
@@ -188,6 +191,10 @@ button:focus-visible,.drop:focus-within,a:focus-visible{outline:2px solid var(--
     <span data-i18n="cli"></span>
   </footer>
 
+  <div class="repo-row">
+    <a class="repo-link" href="https://github.com/imBeyondiDentity/Peel" target="_blank" rel="noopener">GitHub</a>
+    <a class="repo-link" href="mailto:imbeyondidentity@gmail.com">Contact</a>
+  </div>
   <div class="signature"><i></i>Peel</div>
 </main>
 
@@ -215,7 +222,7 @@ const T = {
     fades: "Фейды", none: "Нет", s1: "1 с", s3: "3 с", s5: "5 с",
     processing: "Обрабатываю…",
     limited: v => "Готово · пик не дал поднять громкость выше, вышло " + v + " LUFS",
-    privacy: "Файлы обрабатываются локально и не покидают устройство. ",
+    privacy: "Файлы обрабатываются локально в браузере. ",
     cli: "Для пакетной обработки есть CLI: peel.py в репозитории."
   },
   en: {
@@ -238,7 +245,7 @@ const T = {
     fades: "Fades", none: "None", s1: "1 s", s3: "3 s", s5: "5 s",
     processing: "Processing…",
     limited: v => "Done · the peak limit capped loudness at " + v + " LUFS",
-    privacy: "Files are processed locally and never leave your device. ",
+    privacy: "Files are processed locally in your browser. ",
     cli: "For batch jobs there's a CLI: peel.py in the repo."
   }
 };
